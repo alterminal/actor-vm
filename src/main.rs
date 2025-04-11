@@ -3,7 +3,6 @@ enum Value {
     Float(f64),
     String(String),
     Atom(String),
-    Ref(u64),
     List(Vec<Value>),
     Tuple(Vec<Value>),
     Map(std::collections::HashMap<Value, Value>),
@@ -25,6 +24,7 @@ enum Register {
 }
 
 enum Inst {
+    PushL(Value),
     Move(Register, Register),
     Store(Register, u64),
     Load(u64, Register),
@@ -52,11 +52,6 @@ enum Inst {
     GetTuple(Register, Register), // Get a tuple
     PutList(Register, Register),  // Put a list
     GetList(Register, Register),  // Get a list
-}
-
-struct StackFrame {
-    stack: Vec<Value>,
-    program_counter: u64, // PC
 }
 
 struct Mailbox {
@@ -95,6 +90,9 @@ struct ActorVm {
 }
 
 impl ActorVm {
+    fn post(&mut self, value: Value) {
+        self.mailbox.post(value);
+    }
     fn new(program: Vec<Inst>) -> ActorVm {
         ActorVm {
             stack: Vec::new(),
