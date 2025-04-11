@@ -30,5 +30,31 @@ Actor Vm是一個寄存器型的虛擬機，有11個寄存器。
 ## Assembly
 ```
 MOVE R0, R1 ; 移動R0到R1
-
+STORE R0, 0x1234 ; 
+LOAD R0, 0x1234 ; 
+ADD R0, R1, R2 ; R1加R2存到R0
+SUB R0, R1, R2 ; R1減R2存到R0
+MUL R0, R1, R2
+DIV R0, R1, R2
+MOD R0, R1, R2
+EQ R0, R1 ; 如果R0等於R1就將1存到ZF不等於就將0存到ZF
+NE R0, R1 ; 如果R0等於R1就將0存到ZF不等於就將1存到ZF
+GT R0, R1 ;
+LT R0, R1 ;
+GTE R0, R1 ;
+LTE R0, R1 ;
+label: ; 標記記憶體位置用於跳轉
+JUMP <label> ; 跳到label
+JUMPIF <label> ; 如果ZF是1就跳到label
+PUSH R0 ; 將R0推入棧中
+PUSH {R0, R4} ; 將R0至R4推入棧中
+POP R0 ; 彈出棧中的值到R0
+POP {R0, R4} ; 彈出棧中的值到R4-R0，R4最早R0最晚
+INT R0, <int64> ; 將int64整數放入R0
+STR R0, <len>, <字串> ; 將長度為len的字串放入R0中
+FLO R0, <float64> ; 將float64浮點數放入R0
+ATM R0, <len>, <字串> ; 將長度為len的字串作為Atom放入R0中
+```
+```
+clang -S -target arm-linux-gnueabihf -march=armv7-a main.c -o example_arm.s
 ```

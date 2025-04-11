@@ -24,7 +24,7 @@ enum Register {
 }
 
 enum Inst {
-    PushL(Value),
+    Literal(Register, Value),
     Move(Register, Register),
     Store(Register, u64),
     Load(u64, Register),
@@ -37,7 +37,7 @@ enum Inst {
     Div(Register, Register, Register),
     Mod(Register, Register, Register),
     Jump(u64),
-    JumpIfZero(u64),
+    JumpIf(u64),
     Eq(Register, Register),
     Ne(Register, Register),
     Gt(Register, Register),
