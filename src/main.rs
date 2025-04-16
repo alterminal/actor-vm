@@ -24,13 +24,11 @@ enum Register {
 }
 
 enum Inst {
-    Literal(Register, Value),
     Move(Register, Register),
     Store(Register, u64),
     Load(u64, Register),
     Send(String, Value),
     Recv,
-    Spawn(Value, Register),
     Add(Register, Register, Register),
     Sub(Register, Register, Register),
     Mul(Register, Register, Register),
