@@ -64,15 +64,18 @@ STR R0, <string> ; 將字串放入R0中
 FLO R0, <float64> ; 將float64浮點數放入R0
 ATM R0, <string> ; 將字串作為Atom放入R0
 TUP R0, <int64> ; 將size tuple放入R0
-S_TUP R0, R1, R2 ; 將R0的TUP的R1設為R2的值
-M_TUP R0, R1, R2; 將R0的R1值移到R2
-LIST R0 ; 創建一個list放入R0
+LIST R0, <int64> ; 創建一個長度為<int64>的list放入R0
 SIZE R0, R1 ; 計算R0的長度放到R1，可用於tuple, list, string, map
 MAP R0 ; 創建一個map放入R0
-
+SET_C R0, R1, R2 ; 將R0的R1索引設置為R2，可用於tuple, list string, map
+MOV_C R0, R1, R2 ; 將R0的R1索引中的值移到R2，可用於tuple, list string, map
 SEND R0, R1 ; 將R0將R0發送至R1所指的地址，由供應商提供。
 RECV ; 等待信息
+HLT ; 
 ```
+
+## Message
+發送和接收message應該由供應商提供，當調用SEND
 
 ## Message Assembly
 發送的信息可以以二進制的Assembly形式傳送，以下是在傳送時使用的指令，虛擬機提供一块安全的記憶體供操作，最終將message存入RM寄存器。
