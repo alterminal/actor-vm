@@ -53,7 +53,7 @@ impl Value {
             Value::String(s) => Value::String(s.clone()),
             Value::Atom(a) => Value::Atom(a.clone()),
             Value::List(l) => {
-                let mut new_list: Vec<Value> = Vec::new();
+                let mut new_list: Vec<Value> = Vec::with_capacity(l.len());
                 for item in l {
                     new_list.push(item.clone());
                 }
@@ -67,7 +67,7 @@ impl Value {
                 Value::Tuple(new_tuple)
             }
             Value::Map(m) => {
-                let mut new_map: std::collections::HashMap<Value, Value> =
+                let new_map: std::collections::HashMap<Value, Value> =
                     std::collections::HashMap::new();
                 Value::Map(new_map)
             }
@@ -98,9 +98,11 @@ enum Inst {
     Ref(Reg, usize),
     String(Reg, String),
     Atom(Reg, String),
-    List(Reg),
-    Tuple(Reg),
+    List(Reg, usize),
+    Tuple(Reg, usize),
     Map(Reg),
+    SetC(Reg, Reg, Reg),
+    MoveC(Reg, Reg, Reg),
     Move(Reg, Reg),
     Store(Reg, usize),
     Load(usize, Reg),
@@ -263,9 +265,52 @@ impl ActorVm {
             Inst::Atom(reg, ref s) => {
                 self.set_reg(reg, &Value::Atom(s.clone()));
             }
-            Inst::List(reg) => {
-                let list = Value::List(vec![]);
-                self.set_reg(reg, &list);
+            Inst::Tuple(reg, size) => {
+                let mut tuple = Vec::with_capacity(size);
+                for _ in 1..size {
+                    tuple.push(Value::Ref(0));
+                }
+                self.set_reg(reg, &Value::Tuple(tuple));
+            }
+            Inst::List(reg, size) => {
+                let mut list = Vec::with_capacity(size);
+                for _ in 1..size {
+                    list.push(Value::Ref(0));
+                }
+                self.set_reg(reg, &Value::List(list));
+            }
+            Inst::Map(reg) => {
+                let map = Value::Map(std::collections::HashMap::new());
+                self.set_reg(reg, &map);
+            }
+            Inst::SetC(target, key, value) => {
+                let t = self.get_reg(target);
+                let k = self.get_reg(key);
+                let v = self.get_reg(value);
+                match t {
+                    Value::List(mut list) => match k {
+                        Value::Int(i) => {
+                            list[i as usize] = v.clone();
+                            self.set_reg(target, &Value::List(list));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            Inst::MoveC(from, key, to) => {
+                let f = self.get_reg(from);
+                let k = self.get_reg(key);
+                match f {
+                    Value::List(list) => match k {
+                        Value::Int(i) => {
+                            let value = list[i as usize].clone();
+                            self.set_reg(to, &value);
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
             }
             Inst::Move(r1, r2) => {
                 let value = self.get_reg(r1);
@@ -436,8 +481,6 @@ impl ActorVm {
             Inst::Hlt => {
                 self.running = false;
             }
-            Inst::Tuple(reg) => todo!(),
-            Inst::Map(reg) => todo!(),
             Inst::Send(reg, reg1) => todo!(),
             Inst::Recv(reg) => todo!(),
             Inst::Push(reg) => {
@@ -483,17 +526,13 @@ fn sender(value: Value, to: Value) {
 
 fn main() {
     let pro = vec![
-        Inst::Int(Reg::R2, 10), // max
-        Inst::Int(Reg::R0, 0),  // sum
-        Inst::Int(Reg::R1, 1),  // count
-        Inst::Add(Reg::R0, Reg::R1, Reg::R0),
-        Inst::Eq(Reg::R0, Reg::R2),
-        Inst::JumpIf(7),
-        Inst::Jump(3),
+        Inst::Int(Reg::R0, 1),   // max
+        Inst::Int(Reg::R1, 123), // sum
+        Inst::List(Reg::R2, 10), // list
+        Inst::SetC(Reg::R2, Reg::R0, Reg::R1),
         Inst::Hlt,
     ];
     let mut actor = ActorVm::new(pro, sender, 1000);
-
     while actor.running {
         actor.show_reg();
         let mut buffer = String::new();
@@ -501,11 +540,4 @@ fn main() {
         actor.tick();
     }
     actor.show_reg();
-    // let mut reg = Register::new();
-    // println!();
-    // reg.set(Reg::R0, &Value::Int(10));
-    // reg.show_reg();
-    // let r0 = reg.get(Reg::R0);
-    // println!();
-    // reg.show_reg();
 }

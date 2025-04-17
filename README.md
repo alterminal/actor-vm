@@ -16,6 +16,7 @@ Actor Vm是一個寄存器型的虛擬機，有11個寄存器。
 ## 基本數據類型
 | 類型 | 指令 | 說明 |
 | --- | --- | --- |
+| Ref | REF | |
 | Int | INT | |
 | Float | FLO | |
 | Boolean | Bool | |
@@ -45,9 +46,9 @@ STORE R0, 0x1234 ;
 LOAD R0, 0x1234 ;
 ADD R0, R1, R2 ; R1加R2存到R0
 SUB R0, R1, R2 ; R1減R2存到R0
-MUL R0, R1, R2
-DIV R0, R1, R2
-MOD R0, R1, R2
+MUL R0, R1, R2 ;
+DIV R0, R1, R2 ;
+MOD R0, R1, R2 ;
 EQ R0, R1 ; 如果R0等於R1就將1存到ZF不等於就將0存到ZF
 NE R0, R1 ; 如果R0等於R1就將0存到ZF不等於就將1存到ZF
 GT R0, R1 ;
@@ -71,7 +72,7 @@ SET_C R0, R1, R2 ; 將R0的R1索引設置為R2，可用於tuple, list string, ma
 MOV_C R0, R1, R2 ; 將R0的R1索引中的值移到R2，可用於tuple, list string, map
 SEND R0, R1 ; 將R0將R0發送至R1所指的地址，由供應商提供。
 RECV ; 等待信息
-HLT ; 
+HLT ;
 ```
 
 ## Message
