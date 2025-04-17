@@ -18,6 +18,7 @@ Actor Vm是一個寄存器型的虛擬機，有11個寄存器。
 | --- | --- | --- |
 | Int | INT | |
 | Float | FLO | |
+| Boolean | Bool | |
 | String | STR | |
 | Atom | ATM ||
 | Tuple | TUP ||
