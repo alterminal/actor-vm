@@ -1,10 +1,12 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io;
 
 #[derive(Debug)]
 enum Value {
-    Ref(u64),
+    Ref(usize),
     Int(i64),
     Float(f64),
+    Bool(bool),
     String(String),
     Atom(String),
     List(Vec<Value>),
@@ -20,6 +22,7 @@ impl Hash for Value {
             Value::Float(f) => f.to_bits().hash(state),
             Value::String(s) => s.hash(state),
             Value::Atom(a) => a.hash(state),
+            Value::Bool(b) => b.hash(state),
             Value::List(l) => {
                 for item in l {
                     item.hash(state);
@@ -46,6 +49,7 @@ impl Value {
             Value::Ref(r) => Value::Ref(*r),
             Value::Int(i) => Value::Int(*i),
             Value::Float(f) => Value::Float(*f),
+            Value::Bool(b) => Value::Bool(*b),
             Value::String(s) => Value::String(s.clone()),
             Value::Atom(a) => Value::Atom(a.clone()),
             Value::List(l) => {
@@ -90,15 +94,16 @@ enum Reg {
 enum Inst {
     Int(Reg, i64),
     Float(Reg, f64),
-    Ref(Reg, u64),
+    Bool(Reg, bool),
+    Ref(Reg, usize),
     String(Reg, String),
     Atom(Reg, String),
     List(Reg),
     Tuple(Reg),
     Map(Reg),
     Move(Reg, Reg),
-    Store(Reg, u64),
-    Load(u64, Reg),
+    Store(Reg, usize),
+    Load(usize, Reg),
     Send(Reg, Reg),
     Recv(Reg),
     Add(Reg, Reg, Reg),
@@ -106,8 +111,8 @@ enum Inst {
     Mul(Reg, Reg, Reg),
     Div(Reg, Reg, Reg),
     Mod(Reg, Reg, Reg),
-    Jump(u64),
-    JumpIf(u64),
+    Jump(usize),
+    JumpIf(usize),
     Eq(Reg, Reg),
     Ne(Reg, Reg),
     Gt(Reg, Reg),
@@ -153,16 +158,21 @@ struct Register {
 
 impl Register {
     fn show_reg(&self) {
-        for (i, reg) in self.registers.iter().enumerate() {
-            println!("R{}: {:?}", i, reg);
+        for i in 0..8 {
+            println!("R{}: {:?}", i, self.registers[i]);
         }
+        println!("PC: {:?}", self.registers[8]);
+        println!("ZF: {:?}", self.registers[9]);
+        println!("LR: {:?}", self.registers[10]);
     }
-    fn get(&self, reg: Reg) -> &Value {
-        &self.registers[reg as usize]
+    fn get(&self, reg: Reg) -> Value {
+        self.registers[reg as usize].clone()
     }
+
     fn set(&mut self, reg: Reg, value: &Value) {
-        self.registers[reg as usize] = value.clone();
+        self.registers[reg as usize] = value.clone()
     }
+
     fn new() -> Register {
         Register {
             registers: [
@@ -175,7 +185,7 @@ impl Register {
                 Value::Ref(0),
                 Value::Ref(0),
                 Value::Ref(0),
-                Value::Ref(0),
+                Value::Bool(false),
                 Value::Ref(0),
             ],
         }
@@ -192,6 +202,7 @@ struct ActorVm {
     lock: std::sync::Mutex<()>,
     program: Vec<Inst>,
     sender: fn(Value, Value),
+    running: bool,
 }
 
 impl ActorVm {
@@ -201,20 +212,20 @@ impl ActorVm {
 
     fn release(&mut self) {}
 
-    fn pc(&self) -> u64 {
+    fn pc(&self) -> usize {
         let pc = self.register.get(Reg::PC);
         match pc {
-            Value::Ref(r) => *r,
+            Value::Ref(r) => r,
             _ => panic!("PC is not a reference"),
         }
     }
 
-    fn set_pc(&mut self, pc: u64) {
+    fn set_pc(&mut self, pc: usize) {
         self.register.set(Reg::PC, &Value::Ref(pc));
     }
 
-    fn get_reg(&self, reg: Reg) -> &Value {
-        &self.register.get(reg)
+    fn get_reg(&self, reg: Reg) -> Value {
+        self.register.get(reg)
     }
 
     fn set_reg(&mut self, reg: Reg, value: &Value) {
@@ -223,9 +234,20 @@ impl ActorVm {
 
     fn tick(&mut self) {
         let pc = self.pc();
-        let inst: &Inst = &self.program[pc as usize];
+        let inst: &Inst = &self.program[pc];
         self.register.set(Reg::PC, &Value::Ref(pc + 1));
         match *inst {
+            Inst::Load(address, reg) => {
+                let value = self.heap[address].clone();
+                self.set_reg(reg, &value);
+            }
+            Inst::Store(reg, address) => {
+                let value = self.get_reg(reg).clone();
+                self.heap[address] = value;
+            }
+            Inst::Bool(reg, v) => {
+                self.set_reg(reg, &Value::Bool(v));
+            }
             Inst::Int(reg, v) => {
                 self.set_reg(reg, &Value::Int(v));
             }
@@ -262,7 +284,171 @@ impl ActorVm {
                     _ => {}
                 }
             }
-            _ => {}
+            Inst::Sub(r0, r1, r2) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(r2, &Value::Int(v0 - v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(r2, &Value::Float(v0 - v1));
+                    }
+                    _ => {}
+                }
+            }
+            Inst::Mul(r0, r1, r2) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(r2, &Value::Int(v0 * v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(r2, &Value::Float(v0 * v1));
+                    }
+                    _ => {}
+                }
+            }
+            Inst::Div(r0, r1, r2) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(r2, &Value::Int(v0 / v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(r2, &Value::Float(v0 / v1));
+                    }
+                    _ => {}
+                }
+            }
+            Inst::Mod(r0, r1, r2) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(r2, &Value::Int(v0 % v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(r2, &Value::Float(v0 % v1));
+                    }
+                    _ => {}
+                }
+            }
+            Inst::Eq(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 == v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 == v1));
+                    }
+                    (Value::String(v0), Value::String(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 == v1));
+                    }
+                    _ => {}
+                }
+            }
+            Inst::Ne(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 != v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 != v1));
+                    }
+                    (Value::String(v0), Value::String(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 != v1));
+                    }
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Gt(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 > v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 > v1));
+                    }
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Gte(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 >= v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 >= v1));
+                    }
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Lt(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 < v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 < v1));
+                    }
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Lte(r0, r1) => {
+                let v0 = self.get_reg(r0);
+                let v1 = self.get_reg(r1);
+                match (v0, v1) {
+                    (Value::Int(v0), Value::Int(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 <= v1));
+                    }
+                    (Value::Float(v0), Value::Float(v1)) => {
+                        self.set_reg(Reg::ZF, &Value::Bool(v0 <= v1));
+                    }
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Jump(address) => {
+                self.set_pc(address);
+            }
+            Inst::JumpIf(address) => {
+                let value = self.get_reg(Reg::ZF);
+                match value {
+                    Value::Bool(true) => {
+                        self.set_pc(address);
+                    }
+                    Value::Bool(false) => {}
+                    _ => panic!("Invalid comparison"),
+                }
+            }
+            Inst::Hlt => {
+                self.running = false;
+            }
+            Inst::Tuple(reg) => todo!(),
+            Inst::Map(reg) => todo!(),
+            Inst::Send(reg, reg1) => todo!(),
+            Inst::Recv(reg) => todo!(),
+            Inst::Push(reg) => {
+                let value = self.get_reg(reg).clone();
+                self.stack.push(value);
+                self.set_reg(reg, &Value::Ref(0));
+            }
+            Inst::Pop(reg) => {
+                let value = self.stack.pop().unwrap();
+                self.set_reg(reg, &value);
+            }
         }
     }
 
@@ -280,11 +466,12 @@ impl ActorVm {
             cpu: cpu,
             register: Register::new(),
             stack: Vec::new(),
-            heap: Vec::new(),
+            heap: Vec::with_capacity(1000),
             mailbox: Mailbox::new(),
             lock: std::sync::Mutex::new(()),
             program: program,
             sender: sender,
+            running: true,
         }
     }
 }
@@ -295,19 +482,30 @@ fn sender(value: Value, to: Value) {
 }
 
 fn main() {
-    let mut actor = ActorVm::new(
-        vec![
-            Inst::Int(Reg::R1, 123),
-            Inst::Move(Reg::R1, Reg::R0),
-            Inst::Add(Reg::R0, Reg::R1, Reg::R2),
-            Inst::Send(Reg::R2, Reg::R0),
-            Inst::Hlt,
-        ],
-        sender,
-        1000,
-    );
-    actor.tick();
-    actor.tick();
-    actor.tick();
+    let pro = vec![
+        Inst::Int(Reg::R2, 10), // max
+        Inst::Int(Reg::R0, 0),  // sum
+        Inst::Int(Reg::R1, 1),  // count
+        Inst::Add(Reg::R0, Reg::R1, Reg::R0),
+        Inst::Eq(Reg::R0, Reg::R2),
+        Inst::JumpIf(7),
+        Inst::Jump(3),
+        Inst::Hlt,
+    ];
+    let mut actor = ActorVm::new(pro, sender, 1000);
+
+    while actor.running {
+        actor.show_reg();
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer);
+        actor.tick();
+    }
     actor.show_reg();
+    // let mut reg = Register::new();
+    // println!();
+    // reg.set(Reg::R0, &Value::Int(10));
+    // reg.show_reg();
+    // let r0 = reg.get(Reg::R0);
+    // println!();
+    // reg.show_reg();
 }
